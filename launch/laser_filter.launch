@@ -1,0 +1,8 @@
+<launch>
+    <node pkg="laser_filters" type="scan_to_scan_filter_chain" output="screen" name="hanp_laser_filter">
+          <!-- <remap from="scan" to="base_scan"/> -->
+          <!-- <remap from="scan_filtered" to="/navigation/scan_filtered"/> -->
+          <!-- <remap from="hanp_laser_filter/humans" to="/perception/tracked_humans"/> -->
+          <rosparam command="load" file="$(find hanp_filters)/launch/laser_filter.yaml"/>
+    </node>
+</launch>
