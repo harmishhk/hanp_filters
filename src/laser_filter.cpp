@@ -87,14 +87,16 @@ namespace hanp_filters
                 tf::StampedTransform humans_to_scan_transform;
                 tf_.lookupTransform(scan_in.header.frame_id, tracked_humans.header.frame_id,
                     ros::Time(0), humans_to_scan_transform);
-                auto humans_to_scan_translation = humans_to_scan_transform.getOrigin();
 
                 for(auto tracked_human : tracked_humans.tracks)
                 {
                     hanp_msgs::TrackedHuman tracked_human_transformed;
-                    tracked_human_transformed.pose.pose.position.x = tracked_human.pose.pose.position.x + humans_to_scan_translation[0];
-                    tracked_human_transformed.pose.pose.position.y = tracked_human.pose.pose.position.y + humans_to_scan_translation[1];
-                    // tracked_human_transformed.pose.pose.position.z = tracked_human.pose.pose.position.z + humans_to_scan_translation[2];
+
+                    tf::Pose human_in;
+                    tf::poseMsgToTF(tracked_human.pose.pose, human_in);
+                    tf::poseTFToMsg(humans_to_scan_transform * human_in, tracked_human_transformed.pose.pose);
+
+                    tracked_human_transformed.track_id = tracked_human.track_id;
                     tracked_humans_transformed.tracks.push_back(tracked_human_transformed);
                 }
                 tracked_humans_transformed.header.stamp = humans_to_scan_transform.stamp_;
