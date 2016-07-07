@@ -57,12 +57,18 @@ TEST_CASE("scan filter test")
     scan_out.ranges = {5.0, 5.0, 4.5, 4.0, 3.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 4.5, 4.0, 3.5, 5.5, 3.5, 4.0, 4.5, 5.0};
 
     // create human message
+    hanp_msgs::TrackedSegment segment;
+    segment.pose.pose.position.x = 1.5;
+    segment.pose.pose.position.y = 2.5;
+
+    hanp_msgs::TrackedHuman human;
+    human.track_id = 1;
+    human.segments.push_back(segment);
+
     hanp_msgs::TrackedHumans humans;
     humans.header.frame_id = "laser";
-    hanp_msgs::TrackedHuman human;
-    human.pose.pose.position.x = 1.5;
-    human.pose.pose.position.y = 2.5;
-    humans.tracks.push_back(human);
+    humans.humans.push_back(human);
+
     double human_radius = 0.25;
 
     // create test fixture class to test protected memebers

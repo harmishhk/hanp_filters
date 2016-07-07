@@ -30,13 +30,16 @@
 // parameters configurable before starting
 #define HUMAN_RADIUS 0.25 // meters
 #define TRACKED_HUMANS_TOPIC "humans"
+#define DEFAULT_HUMAN_SEGMENT hanp_msgs::TrackedSegmentType::TORSO
 
 // other parameters
 #define SUBSCRIBERS_QUEUE_SIZE 5
 #define PUBLISHERS_QUEUE_SIZE 5
 
-#include <hanp_filters/laser_filter.h>
 #include <math.h>
+
+#include <hanp_filters/laser_filter.h>
+#include <hanp_msgs/TrackedSegmentType.h>
 
 // declare the LaserFilter as a pluginlib class
 #include "pluginlib/class_list_macros.h"
@@ -62,11 +65,14 @@ namespace hanp_filters
         ROS_DEBUG("using human_radius of %f meters", human_radius_);
 
         // set-up subscribers and publishers
-        tracked_humans_sub_ = private_nh.subscribe(TRACKED_HUMANS_TOPIC, SUBSCRIBERS_QUEUE_SIZE, &LaserFilter::trackedHumansReceived, this);
+        std::string tracked_humans_topic;
+        private_nh.param("tracked_humans_topic", tracked_humans_topic, std::string(TRACKED_HUMANS_TOPIC));
+        tracked_humans_sub_ = private_nh.subscribe(tracked_humans_topic, SUBSCRIBERS_QUEUE_SIZE, &LaserFilter::trackedHumansReceived, this);
+
+        private_nh.param("default_human_segment", default_human_segment_, (int)(DEFAULT_HUMAN_SEGMENT));
 
         // listen tf for some time to aviod exploration-in-past errors
         ros::Duration(0.5).sleep();
-
     }
 
     bool LaserFilter::update(const sensor_msgs::LaserScan& scan_in, sensor_msgs::LaserScan& scan_out)
@@ -74,7 +80,7 @@ namespace hanp_filters
         // get tracked humans pointer locally for thread safety
         auto tracked_humans = last_tracked_humans_;
 
-        if(tracked_humans.tracks.size() > 0)
+        if(tracked_humans.humans.size() > 0)
         {
             // transform humans to scan frame
             int res;
@@ -88,16 +94,39 @@ namespace hanp_filters
                 tf_.lookupTransform(scan_in.header.frame_id, tracked_humans.header.frame_id,
                     ros::Time(0), humans_to_scan_transform);
 
-                for(auto tracked_human : tracked_humans.tracks)
+                for(auto tracked_human : tracked_humans.humans)
                 {
-                    hanp_msgs::TrackedHuman tracked_human_transformed;
+                    // check if default segment exists for this human
+                    auto segment_it = tracked_human.segments.end();
+                    for(auto it = tracked_human.segments.begin(); it != tracked_human.segments.end(); ++it)
+                    {
+                        if(it->type == default_human_segment_)
+                        {
+                            segment_it = it;
+                            break;
+                        }
+                    }
 
-                    tf::Pose human_in;
-                    tf::poseMsgToTF(tracked_human.pose.pose, human_in);
-                    tf::poseTFToMsg(humans_to_scan_transform * human_in, tracked_human_transformed.pose.pose);
+                    // don't consider human if it does not have default segment
+                    if(segment_it == tracked_human.segments.end())
+                    {
+                        continue;
+                    }
+                    else
+                    {
+                        auto segment = *segment_it;
 
-                    tracked_human_transformed.track_id = tracked_human.track_id;
-                    tracked_humans_transformed.tracks.push_back(tracked_human_transformed);
+                        hanp_msgs::TrackedSegment tracked_human_segment_transformed;
+                        tf::Pose human_segment_in;
+                        tf::poseMsgToTF(segment.pose.pose, human_segment_in);
+                        tf::poseTFToMsg(humans_to_scan_transform * human_segment_in, tracked_human_segment_transformed.pose.pose);
+
+                        hanp_msgs::TrackedHuman tracked_human_transformed;
+                        tracked_human_transformed.track_id = tracked_human.track_id;
+                        tracked_human_transformed.segments.push_back(tracked_human_segment_transformed);
+
+                        tracked_humans_transformed.humans.push_back(tracked_human_transformed);
+                    }
                 }
                 tracked_humans_transformed.header.stamp = humans_to_scan_transform.stamp_;
                 tracked_humans_transformed.header.frame_id = humans_to_scan_transform.frame_id_;
@@ -125,6 +154,33 @@ namespace hanp_filters
     {
         scan_out = scan_in;
 
+        // collect human segments responsible for filtring scans
+        std::vector<hanp_msgs::TrackedSegment> human_segments;
+        for(auto human : humans.humans)
+        {
+            // check if default segment exists for this human
+            auto segment_it = human.segments.end();
+            for(auto it = human.segments.begin(); it != human.segments.end(); ++it)
+            {
+                if(it->type == default_human_segment_)
+                {
+                    segment_it = it;
+                    break;
+                }
+            }
+
+            // don't consider human if it does not have default segment
+            if(segment_it == human.segments.end())
+            {
+                continue;
+            }
+            else
+            {
+                human_segments.push_back(*segment_it);
+            }
+        }
+
+        // now filter the scans
         for(auto i = 0; i < scan_in.ranges.size(); i++)
         {
             auto range = scan_in.ranges[i];
@@ -136,9 +192,9 @@ namespace hanp_filters
                 auto rangey = range * sin(angle);
 
                 // if range value is due to human, change it to range_max
-                for(auto human : humans.tracks)
+                for(auto segment : human_segments)
                 {
-                    auto dist = hypot(rangex - human.pose.pose.position.x, rangey - human.pose.pose.position.y);
+                    auto dist = hypot(rangex - segment.pose.pose.position.x, rangey - segment.pose.pose.position.y);
                     if (dist < human_radius)
                     {
                         scan_out.ranges[i] = scan_out.range_max;

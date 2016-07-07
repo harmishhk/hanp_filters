@@ -64,6 +64,8 @@ namespace hanp_filters
         // removes scan points that are nearby humans
         //  given scan and humans are in same frame
         bool filterScan(const sensor_msgs::LaserScan& scan_in, sensor_msgs::LaserScan& scan_out, hanp_msgs::TrackedHumans& humans, double human_radius);
+
+        int default_human_segment_; // human segment to use
     };
 }
 
