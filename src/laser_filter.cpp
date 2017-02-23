@@ -1,5 +1,5 @@
 /*/
- * Copyright (c) 2015 LAAS/CNRS
+ * Copyright (c) 2017 LAAS-CNRS
  * All rights reserved.
  *
  * Redistribution and use  in source  and binary  forms,  with or without
@@ -43,135 +43,131 @@
 
 // declare the LaserFilter as a pluginlib class
 #include "pluginlib/class_list_macros.h"
-PLUGINLIB_EXPORT_CLASS(hanp_filters::LaserFilter, filters::FilterBase<sensor_msgs::LaserScan>)
+PLUGINLIB_EXPORT_CLASS(hanp_filters::LaserFilter,
+                       filters::FilterBase<sensor_msgs::LaserScan>)
 
-namespace hanp_filters
-{
-    // empty constructor and destructor
-    LaserFilter::LaserFilter() {}
-    LaserFilter::~LaserFilter() {}
+namespace hanp_filters {
+// empty constructor and destructor
+LaserFilter::LaserFilter() {}
+LaserFilter::~LaserFilter() {}
 
-    bool LaserFilter::configure()
-    {
-        // get private node handle
-        ros::NodeHandle private_nh("~/");
+bool LaserFilter::configure() {
+  // get private node handle
+  ros::NodeHandle private_nh("~/");
 
-        // get parameters from parameter server
-        if(!getParam("human_radius", human_radius_))
-        {
-            human_radius_ = HUMAN_RADIUS;
-            ROS_WARN("no human_radius specified, using defalut value of %f meters", HUMAN_RADIUS);
-        }
-        ROS_DEBUG("using human_radius of %f meters", human_radius_);
+  // get parameters from parameter server
+  if (!getParam("human_radius", human_radius_)) {
+    human_radius_ = HUMAN_RADIUS;
+    ROS_WARN("no human_radius specified, using defalut value of %f meters",
+             HUMAN_RADIUS);
+  }
+  ROS_DEBUG("using human_radius of %f meters", human_radius_);
 
-        // set-up subscribers and publishers
-        std::string tracked_humans_topic;
-        private_nh.param("tracked_humans_topic", tracked_humans_topic, std::string(TRACKED_HUMANS_TOPIC));
-        tracked_humans_sub_ = private_nh.subscribe(tracked_humans_topic, SUBSCRIBERS_QUEUE_SIZE, &LaserFilter::trackedHumansReceived, this);
+  // set-up subscribers and publishers
+  std::string tracked_humans_topic;
+  private_nh.param("tracked_humans_topic", tracked_humans_topic,
+                   std::string(TRACKED_HUMANS_TOPIC));
+  tracked_humans_sub_ =
+      private_nh.subscribe(tracked_humans_topic, SUBSCRIBERS_QUEUE_SIZE,
+                           &LaserFilter::trackedHumansReceived, this);
 
-        private_nh.param("default_human_segment", default_human_segment_, (int)(DEFAULT_HUMAN_SEGMENT));
+  private_nh.param("default_human_segment", default_human_segment_,
+                   (int)(DEFAULT_HUMAN_SEGMENT));
 
-        // listen tf for some time to aviod exploration-in-past errors
-        ros::Duration(0.5).sleep();
-    }
+  // listen tf for some time to aviod exploration-in-past errors
+  ros::Duration(0.5).sleep();
+}
 
-    bool LaserFilter::update(const sensor_msgs::LaserScan& scan_in, sensor_msgs::LaserScan& scan_out)
-    {
-        // get tracked humans pointer locally for thread safety
-        auto tracked_humans = last_tracked_humans_;
+bool LaserFilter::update(const sensor_msgs::LaserScan &scan_in,
+                         sensor_msgs::LaserScan &scan_out) {
+  // get tracked humans pointer locally for thread safety
+  auto tracked_humans = last_tracked_humans_;
 
-        if(tracked_humans.humans.size() > 0)
-        {
-            // transform humans to scan frame
-            int res;
-            std::vector<geometry_msgs::Pose> transformed_human_poses;
-            try
-            {
-                std::string error_msg;
-                res = tf_.waitForTransform(scan_in.header.frame_id, tracked_humans.header.frame_id,
-                    ros::Time(0), ros::Duration(0.5), ros::Duration(0.01), &error_msg);
-                tf::StampedTransform humans_to_scan_transform;
-                tf_.lookupTransform(scan_in.header.frame_id, tracked_humans.header.frame_id,
-                    ros::Time(0), humans_to_scan_transform);
+  if (tracked_humans.humans.size() > 0) {
+    // transform humans to scan frame
+    int res;
+    std::vector<geometry_msgs::Pose> transformed_human_poses;
+    try {
+      std::string error_msg;
+      res = tf_.waitForTransform(
+          scan_in.header.frame_id, tracked_humans.header.frame_id, ros::Time(0),
+          ros::Duration(0.5), ros::Duration(0.01), &error_msg);
+      tf::StampedTransform humans_to_scan_transform;
+      tf_.lookupTransform(scan_in.header.frame_id,
+                          tracked_humans.header.frame_id, ros::Time(0),
+                          humans_to_scan_transform);
 
-                for(auto &tracked_human : tracked_humans.humans)
-                {
-                    // check if default segment exists for this human
-                    auto segment_it = tracked_human.segments.end();
-                    for(auto it = tracked_human.segments.begin(); it != tracked_human.segments.end(); ++it)
-                    {
-                        if(it->type == default_human_segment_)
-                        {
-                            segment_it = it;
-                            break;
-                        }
-                    }
-
-                    // don't consider human if it does not have default segment
-                    if(segment_it == tracked_human.segments.end())
-                    {
-                        continue;
-                    }
-                    else
-                    {
-                        auto segment = *segment_it;
-
-                        geometry_msgs::Pose transformed_human_pose;
-                        tf::Pose human_segment_in;
-                        tf::poseMsgToTF(segment.pose.pose, human_segment_in);
-                        tf::poseTFToMsg(humans_to_scan_transform * human_segment_in, transformed_human_pose);
-
-                        transformed_human_poses.push_back(transformed_human_pose);
-                    }
-                }
-            }
-            catch(const tf::TransformException &ex)
-            {
-                ROS_ERROR("transform failure (%d): %s", res, ex.what());
-            }
-
-            return filterScan(scan_in, scan_out, transformed_human_poses, human_radius_);
-        }
-        else
-        {
-            scan_out = scan_in;
-            return true;
-        }
-    }
-
-    void LaserFilter::trackedHumansReceived(const hanp_msgs::TrackedHumans& tracked_humans)
-    {
-        ROS_INFO_ONCE("received humans");
-        last_tracked_humans_ = tracked_humans;
-    }
-
-    bool LaserFilter::filterScan(const sensor_msgs::LaserScan& scan_in, sensor_msgs::LaserScan& scan_out, std::vector<geometry_msgs::Pose>& human_poses, double human_radius)
-    {
-        scan_out = scan_in;
-
-        // now filter the scans
-        for(auto i = 0; i < scan_in.ranges.size(); i++)
-        {
-            auto range = scan_in.ranges[i];
-            if((!std::isnan(range)) && (range < scan_in.range_max) && (range > scan_in.range_min))
-            {
-                // get the position of the range point in scan frame
-                auto angle = scan_in.angle_min + (i * scan_in.angle_increment);
-                auto rangex = range * cos(angle);
-                auto rangey = range * sin(angle);
-
-                // if range value is due to human, change it to range_max
-                for(auto &human_pose : human_poses)
-                {
-                    auto dist = hypot(rangex - human_pose.position.x, rangey - human_pose.position.y);
-                    if (dist < human_radius)
-                    {
-                        scan_out.ranges[i] = scan_out.range_max;
-                    }
-                }
-            }
+      for (auto &tracked_human : tracked_humans.humans) {
+        // check if default segment exists for this human
+        auto segment_it = tracked_human.segments.end();
+        for (auto it = tracked_human.segments.begin();
+             it != tracked_human.segments.end(); ++it) {
+          if (it->type == default_human_segment_) {
+            segment_it = it;
+            break;
+          }
         }
 
-        return true;
+        // don't consider human if it does not have default segment
+        if (segment_it == tracked_human.segments.end()) {
+          continue;
+        } else {
+          auto segment = *segment_it;
+
+          geometry_msgs::Pose transformed_human_pose;
+          tf::Pose human_segment_in;
+          tf::poseMsgToTF(segment.pose.pose, human_segment_in);
+          tf::poseTFToMsg(humans_to_scan_transform * human_segment_in,
+                          transformed_human_pose);
+
+          transformed_human_poses.push_back(transformed_human_pose);
+        }
+      }
+    } catch (const tf::TransformException &ex) {
+      ROS_ERROR("transform failure (%d): %s", res, ex.what());
     }
+
+    return filterScan(scan_in, scan_out, transformed_human_poses,
+                      human_radius_);
+  } else {
+    scan_out = scan_in;
+    return true;
+  }
+}
+
+void LaserFilter::trackedHumansReceived(
+    const hanp_msgs::TrackedHumans &tracked_humans) {
+  ROS_INFO_ONCE("received humans");
+  last_tracked_humans_ = tracked_humans;
+}
+
+bool LaserFilter::filterScan(const sensor_msgs::LaserScan &scan_in,
+                             sensor_msgs::LaserScan &scan_out,
+                             std::vector<geometry_msgs::Pose> &human_poses,
+                             double human_radius) {
+  scan_out = scan_in;
+
+  // now filter the scans
+  for (auto i = 0; i < scan_in.ranges.size(); i++) {
+    auto range = scan_in.ranges[i];
+    if ((!std::isnan(range)) && (range < scan_in.range_max) &&
+        (range > scan_in.range_min)) {
+      // get the position of the range point in scan frame
+      auto angle = scan_in.angle_min + (i * scan_in.angle_increment);
+      auto rangex = range * cos(angle);
+      auto rangey = range * sin(angle);
+
+      // if range value is due to human, change it to range_max
+      for (auto &human_pose : human_poses) {
+        auto dist = hypot(rangex - human_pose.position.x,
+                          rangey - human_pose.position.y);
+        if (dist < human_radius) {
+          scan_out.ranges[i] = scan_out.range_max;
+        }
+      }
+    }
+  }
+
+  return true;
+}
 }

@@ -1,5 +1,5 @@
 /*/
- * Copyright (c) 2015 LAAS/CNRS
+ * Copyright (c) 2017 LAAS-CNRS
  * All rights reserved.
  *
  * Redistribution and use  in source  and binary  forms,  with or without
@@ -31,68 +31,72 @@
 #include <catch.hpp>
 #include <hanp_filters/laser_filter.h>
 
-TEST_CASE("scan filter test")
-{
-    // create scan messages
-    sensor_msgs::LaserScan scan_in;
-    scan_in.header.frame_id = "laser";
-    scan_in.angle_min = -1.5;
-    scan_in.angle_max = 1.5;
-    scan_in.angle_increment = 0.1;
-    scan_in.time_increment = 0.1;
-    scan_in.scan_time = 0.1;
-    scan_in.range_min = 0.5;
-    scan_in.range_max = 5.5;
-    scan_in.ranges = {5.0, 5.0, 4.5, 4.0, 3.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 4.5, 4.0, 3.5, 3.0, 3.5, 4.0, 4.5, 5.0};
+TEST_CASE("scan filter test") {
+  // create scan messages
+  sensor_msgs::LaserScan scan_in;
+  scan_in.header.frame_id = "laser";
+  scan_in.angle_min = -1.5;
+  scan_in.angle_max = 1.5;
+  scan_in.angle_increment = 0.1;
+  scan_in.time_increment = 0.1;
+  scan_in.scan_time = 0.1;
+  scan_in.range_min = 0.5;
+  scan_in.range_max = 5.5;
+  scan_in.ranges = {5.0, 5.0, 4.5, 4.0, 3.5, 3.0, 3.5, 4.0, 4.5, 5.0,
+                    5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0,
+                    5.0, 5.0, 4.5, 4.0, 3.5, 3.0, 3.5, 4.0, 4.5, 5.0};
 
-    sensor_msgs::LaserScan scan_out;
-    scan_out.header.frame_id = "laser";
-    scan_out.angle_min = -1.5;
-    scan_out.angle_max = 1.5;
-    scan_out.angle_increment = 0.1;
-    scan_out.time_increment = 0.1;
-    scan_out.scan_time = 0.1;
-    scan_out.range_min = 0.5;
-    scan_out.range_max = 5.5;
-    scan_out.ranges = {5.0, 5.0, 4.5, 4.0, 3.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 4.5, 4.0, 3.5, 5.5, 3.5, 4.0, 4.5, 5.0};
+  sensor_msgs::LaserScan scan_out;
+  scan_out.header.frame_id = "laser";
+  scan_out.angle_min = -1.5;
+  scan_out.angle_max = 1.5;
+  scan_out.angle_increment = 0.1;
+  scan_out.time_increment = 0.1;
+  scan_out.scan_time = 0.1;
+  scan_out.range_min = 0.5;
+  scan_out.range_max = 5.5;
+  scan_out.ranges = {5.0, 5.0, 4.5, 4.0, 3.5, 3.0, 3.5, 4.0, 4.5, 5.0,
+                     5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0,
+                     5.0, 5.0, 4.5, 4.0, 3.5, 5.5, 3.5, 4.0, 4.5, 5.0};
 
-    // create human message
-    hanp_msgs::TrackedSegment segment;
-    segment.pose.pose.position.x = 1.5;
-    segment.pose.pose.position.y = 2.5;
+  // create human message
+  hanp_msgs::TrackedSegment segment;
+  segment.pose.pose.position.x = 1.5;
+  segment.pose.pose.position.y = 2.5;
 
-    hanp_msgs::TrackedHuman human;
-    human.track_id = 1;
-    human.segments.push_back(segment);
+  hanp_msgs::TrackedHuman human;
+  human.track_id = 1;
+  human.segments.push_back(segment);
 
-    hanp_msgs::TrackedHumans humans;
-    humans.header.frame_id = "laser";
-    humans.humans.push_back(human);
+  hanp_msgs::TrackedHumans humans;
+  humans.header.frame_id = "laser";
+  humans.humans.push_back(human);
 
-    double human_radius = 0.25;
+  double human_radius = 0.25;
 
-    // create test fixture class to test protected memebers
-    class LaserFilterTestsFixture : public hanp_filters::LaserFilter
-    {
-        public:
-            bool testFilterScan(const sensor_msgs::LaserScan& scan_in, sensor_msgs::LaserScan& scan_out, hanp_msgs::TrackedHumans& humans, double human_radius)
-            {
-                return filterScan(scan_in, scan_out, humans, human_radius);
-            }
-    };
-    int argc = 0;
-    ros::init(argc, NULL, "name"); // have to initialize ros because of pluginlib, needs running roscore
-    LaserFilterTestsFixture laserFilterTestsFixture;
-
-    // placeholder for filtered scan
-    sensor_msgs::LaserScan scan_out_test;
-
-    // check if function returns true with correct filtered scan
-    REQUIRE(laserFilterTestsFixture.testFilterScan(scan_in, scan_out_test, humans, human_radius));
-    REQUIRE(scan_out_test.ranges.size() == scan_out.ranges.size());
-    // CHECK(scan_out_test.ranges == scan_out.ranges);
-    for (auto i = 0; i < scan_out_test.ranges.size(); i++)
-    {
-        CHECK(scan_out_test.ranges[i] == scan_out.ranges[i]);
+  // create test fixture class to test protected memebers
+  class LaserFilterTestsFixture : public hanp_filters::LaserFilter {
+  public:
+    bool testFilterScan(const sensor_msgs::LaserScan &scan_in,
+                        sensor_msgs::LaserScan &scan_out,
+                        hanp_msgs::TrackedHumans &humans, double human_radius) {
+      return filterScan(scan_in, scan_out, humans, human_radius);
     }
+  };
+  int argc = 0;
+  ros::init(argc, NULL, "name"); // have to initialize ros because of pluginlib,
+                                 // needs running roscore
+  LaserFilterTestsFixture laserFilterTestsFixture;
+
+  // placeholder for filtered scan
+  sensor_msgs::LaserScan scan_out_test;
+
+  // check if function returns true with correct filtered scan
+  REQUIRE(laserFilterTestsFixture.testFilterScan(scan_in, scan_out_test, humans,
+                                                 human_radius));
+  REQUIRE(scan_out_test.ranges.size() == scan_out.ranges.size());
+  // CHECK(scan_out_test.ranges == scan_out.ranges);
+  for (auto i = 0; i < scan_out_test.ranges.size(); i++) {
+    CHECK(scan_out_test.ranges[i] == scan_out.ranges[i]);
+  }
 }

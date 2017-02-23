@@ -1,5 +1,5 @@
 /*/
- * Copyright (c) 2015 LAAS/CNRS
+ * Copyright (c) 2017 LAAS-CNRS
  * All rights reserved.
  *
  * Redistribution and use  in source  and binary  forms,  with or without
@@ -30,44 +30,46 @@
 #ifndef HANP_FILTERS_LASER_FILTER_H
 #define HANP_FILTERS_LASER_FILTER_H
 
-#include <ros/ros.h>
 #include <filters/filter_base.h>
-#include <tf/transform_listener.h>
-#include <sensor_msgs/LaserScan.h>
-#include <hanp_msgs/TrackedHumans.h>
 #include <geometry_msgs/Pose.h>
+#include <hanp_msgs/TrackedHumans.h>
+#include <ros/ros.h>
+#include <sensor_msgs/LaserScan.h>
+#include <tf/transform_listener.h>
 
-namespace hanp_filters
-{
-    class LaserFilter : public filters::FilterBase<sensor_msgs::LaserScan>
-    {
-    public:
-        LaserFilter();
-        ~LaserFilter();
+namespace hanp_filters {
+class LaserFilter : public filters::FilterBase<sensor_msgs::LaserScan> {
+public:
+  LaserFilter();
+  ~LaserFilter();
 
-        // inherited methods
-        bool configure();
-        bool update(const sensor_msgs::LaserScan& scan_in, sensor_msgs::LaserScan& scan_out);
+  // inherited methods
+  bool configure();
+  bool update(const sensor_msgs::LaserScan &scan_in,
+              sensor_msgs::LaserScan &scan_out);
 
-        // ros message callbacks
-        void trackedHumansReceived(const hanp_msgs::TrackedHumans& tracked_humans);
+  // ros message callbacks
+  void trackedHumansReceived(const hanp_msgs::TrackedHumans &tracked_humans);
 
-    protected:
-        // class variables
-        double human_radius_;
-        hanp_msgs::TrackedHumans last_tracked_humans_;
+protected:
+  // class variables
+  double human_radius_;
+  hanp_msgs::TrackedHumans last_tracked_humans_;
 
-        // ros variables
-        tf::TransformListener tf_;
-        ros::Subscriber tracked_humans_sub_;
+  // ros variables
+  tf::TransformListener tf_;
+  ros::Subscriber tracked_humans_sub_;
 
-        // functions
-        // removes scan points that are nearby humans
-        //  given scan and humans are in same frame
-        bool filterScan(const sensor_msgs::LaserScan& scan_in, sensor_msgs::LaserScan& scan_out, std::vector<geometry_msgs::Pose>& human_poses, double human_radius);
+  // functions
+  // removes scan points that are nearby humans
+  //  given scan and humans are in same frame
+  bool filterScan(const sensor_msgs::LaserScan &scan_in,
+                  sensor_msgs::LaserScan &scan_out,
+                  std::vector<geometry_msgs::Pose> &human_poses,
+                  double human_radius);
 
-        int default_human_segment_; // human segment to use
-    };
+  int default_human_segment_; // human segment to use
+};
 }
 
 #endif // HANP_FILTERS_LASER_FILTER_H
