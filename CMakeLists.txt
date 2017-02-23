@@ -7,6 +7,7 @@ project(hanp_filters)
 
 find_package(catkin REQUIRED COMPONENTS
   class_loader
+  geometry_msgs
   hanp_msgs
   roscpp
   sensor_msgs
@@ -53,6 +54,7 @@ catkin_package(
   # LIBRARIES
   #   hanp_filters
   CATKIN_DEPENDS
+    geometry_msgs
     hanp_msgs
     roscpp
     sensor_msgs

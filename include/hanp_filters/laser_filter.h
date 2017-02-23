@@ -35,6 +35,7 @@
 #include <tf/transform_listener.h>
 #include <sensor_msgs/LaserScan.h>
 #include <hanp_msgs/TrackedHumans.h>
+#include <geometry_msgs/Pose.h>
 
 namespace hanp_filters
 {
@@ -63,7 +64,7 @@ namespace hanp_filters
         // functions
         // removes scan points that are nearby humans
         //  given scan and humans are in same frame
-        bool filterScan(const sensor_msgs::LaserScan& scan_in, sensor_msgs::LaserScan& scan_out, hanp_msgs::TrackedHumans& humans, double human_radius);
+        bool filterScan(const sensor_msgs::LaserScan& scan_in, sensor_msgs::LaserScan& scan_out, std::vector<geometry_msgs::Pose>& human_poses, double human_radius);
 
         int default_human_segment_; // human segment to use
     };

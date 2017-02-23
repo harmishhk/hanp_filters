@@ -84,7 +84,7 @@ namespace hanp_filters
         {
             // transform humans to scan frame
             int res;
-            hanp_msgs::TrackedHumans tracked_humans_transformed;
+            std::vector<geometry_msgs::Pose> transformed_human_poses;
             try
             {
                 std::string error_msg;
@@ -94,7 +94,7 @@ namespace hanp_filters
                 tf_.lookupTransform(scan_in.header.frame_id, tracked_humans.header.frame_id,
                     ros::Time(0), humans_to_scan_transform);
 
-                for(auto tracked_human : tracked_humans.humans)
+                for(auto &tracked_human : tracked_humans.humans)
                 {
                     // check if default segment exists for this human
                     auto segment_it = tracked_human.segments.end();
@@ -116,27 +116,21 @@ namespace hanp_filters
                     {
                         auto segment = *segment_it;
 
-                        hanp_msgs::TrackedSegment tracked_human_segment_transformed;
+                        geometry_msgs::Pose transformed_human_pose;
                         tf::Pose human_segment_in;
                         tf::poseMsgToTF(segment.pose.pose, human_segment_in);
-                        tf::poseTFToMsg(humans_to_scan_transform * human_segment_in, tracked_human_segment_transformed.pose.pose);
+                        tf::poseTFToMsg(humans_to_scan_transform * human_segment_in, transformed_human_pose);
 
-                        hanp_msgs::TrackedHuman tracked_human_transformed;
-                        tracked_human_transformed.track_id = tracked_human.track_id;
-                        tracked_human_transformed.segments.push_back(tracked_human_segment_transformed);
-
-                        tracked_humans_transformed.humans.push_back(tracked_human_transformed);
+                        transformed_human_poses.push_back(transformed_human_pose);
                     }
                 }
-                tracked_humans_transformed.header.stamp = humans_to_scan_transform.stamp_;
-                tracked_humans_transformed.header.frame_id = humans_to_scan_transform.frame_id_;
             }
             catch(const tf::TransformException &ex)
             {
                 ROS_ERROR("transform failure (%d): %s", res, ex.what());
             }
 
-            return filterScan(scan_in, scan_out, tracked_humans_transformed, human_radius_);
+            return filterScan(scan_in, scan_out, transformed_human_poses, human_radius_);
         }
         else
         {
@@ -147,38 +141,13 @@ namespace hanp_filters
 
     void LaserFilter::trackedHumansReceived(const hanp_msgs::TrackedHumans& tracked_humans)
     {
+        ROS_INFO_ONCE("received humans");
         last_tracked_humans_ = tracked_humans;
     }
 
-    bool LaserFilter::filterScan(const sensor_msgs::LaserScan& scan_in, sensor_msgs::LaserScan& scan_out, hanp_msgs::TrackedHumans& humans, double human_radius)
+    bool LaserFilter::filterScan(const sensor_msgs::LaserScan& scan_in, sensor_msgs::LaserScan& scan_out, std::vector<geometry_msgs::Pose>& human_poses, double human_radius)
     {
         scan_out = scan_in;
-
-        // collect human segments responsible for filtring scans
-        std::vector<hanp_msgs::TrackedSegment> human_segments;
-        for(auto human : humans.humans)
-        {
-            // check if default segment exists for this human
-            auto segment_it = human.segments.end();
-            for(auto it = human.segments.begin(); it != human.segments.end(); ++it)
-            {
-                if(it->type == default_human_segment_)
-                {
-                    segment_it = it;
-                    break;
-                }
-            }
-
-            // don't consider human if it does not have default segment
-            if(segment_it == human.segments.end())
-            {
-                continue;
-            }
-            else
-            {
-                human_segments.push_back(*segment_it);
-            }
-        }
 
         // now filter the scans
         for(auto i = 0; i < scan_in.ranges.size(); i++)
@@ -192,9 +161,9 @@ namespace hanp_filters
                 auto rangey = range * sin(angle);
 
                 // if range value is due to human, change it to range_max
-                for(auto segment : human_segments)
+                for(auto &human_pose : human_poses)
                 {
-                    auto dist = hypot(rangex - segment.pose.pose.position.x, rangey - segment.pose.pose.position.y);
+                    auto dist = hypot(rangex - human_pose.position.x, rangey - human_pose.position.y);
                     if (dist < human_radius)
                     {
                         scan_out.ranges[i] = scan_out.range_max;
